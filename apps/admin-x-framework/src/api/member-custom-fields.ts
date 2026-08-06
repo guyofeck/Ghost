@@ -1,4 +1,4 @@
-import {FIELD_TYPE_IDS, type FieldType} from '@tryghost/custom-field-types';
+import {FIELD_TYPE_IDS, subFieldsOf, type FieldType} from '@tryghost/custom-field-types';
 import {csvColumnsForField} from '@tryghost/custom-field-types/csv';
 import {Meta, createMutation, createQuery, createQueryWithId} from '../utils/api/hooks';
 
@@ -91,17 +91,36 @@ export type MemberCustomFieldCsvColumn = {label: string; value: string};
  */
 export const memberCustomFieldCsvColumns = (fields: MemberCustomField[]): MemberCustomFieldCsvColumn[] => {
     return fields.flatMap((field) => {
-        const columns = csvColumnsForField({key: field.key, type: field.type});
-        return columns.map((column) => {
-            if (columns.length === 1) {
-                return {label: field.name, value: column};
-            }
-            const sub = column.slice(column.lastIndexOf('.') + 1);
-            const subLabel = userTypeForFieldType(field.type).subFields?.[sub] ?? sub;
-            return {label: `${field.name} (${subLabel})`, value: column};
-        });
+        // Columns and parts are both derived from the type's value schema, in its order, so
+        // the two line up positionally and neither has to parse a column back apart.
+        const parts = memberCustomFieldParts(field.type);
+        return csvColumnsForField({key: field.key, type: field.type}).map((column, index) => (parts
+            ? {label: `${field.name} (${parts[index].label})`, value: column}
+            : {label: field.name, value: column}));
     });
 };
+
+/** One part of a composite field type: the key the value schema declares, and its label. */
+export type MemberCustomFieldPart = {key: string; label: string};
+
+/**
+ * The parts of a composite field type, or null for a scalar.
+ *
+ * The shared catalog is the authority on which parts exist, because it derives them from
+ * the type's own value schema. This catalog only names them. Asking presentation instead
+ * would let a composite whose labels nobody wrote look like a scalar, which is a worse
+ * failure than an unlabelled part: a caller would never think to ask which part it holds.
+ * So an unnamed part falls back to its key, exactly as the CSV columns above do.
+ */
+export const memberCustomFieldParts = (type: FieldType): MemberCustomFieldPart[] | null => {
+    const subFields = subFieldsOf(type);
+    if (!subFields) {
+        return null;
+    }
+    const labels = userTypeForFieldType(type).subFields;
+    return subFields.map(key => ({key, label: labels?.[key] ?? key}));
+};
+
 
 export interface MemberCustomFieldsResponseType {
     meta?: Meta;
