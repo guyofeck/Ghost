@@ -81,7 +81,10 @@ export const userTypeForField = (field: MemberCustomField): MemberCustomFieldUse
 
 // A custom field CSV column offered as an import mapping target: the column name the
 // backend reads (`value`) and a human label for the picker.
-export type MemberCustomFieldCsvColumn = {label: string; value: string};
+// The field's type rides along so a picker can show what kind of thing the column holds
+// without being handed the fields as well. Every column of a composite carries the
+// composite's own type, which is what its icon is drawn from.
+export type MemberCustomFieldCsvColumn = {label: string; value: string; type: FieldType};
 
 /**
  * The CSV import mapping targets for a set of custom fields: one per column the export
@@ -95,8 +98,8 @@ export const memberCustomFieldCsvColumns = (fields: MemberCustomField[]): Member
         // the two line up positionally and neither has to parse a column back apart.
         const parts = memberCustomFieldParts(field.type);
         return csvColumnsForField({key: field.key, type: field.type}).map((column, index) => (parts
-            ? {label: `${field.name} (${parts[index].label})`, value: column}
-            : {label: field.name, value: column}));
+            ? {label: `${field.name} (${parts[index].label})`, value: column, type: field.type}
+            : {label: field.name, value: column, type: field.type}));
     });
 };
 

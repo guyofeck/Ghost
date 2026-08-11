@@ -1,7 +1,6 @@
 import ConfirmationModal from '@/settings/app/components/confirmation-modal';
 import {CustomFieldTypeOption} from '@/shared/member-custom-fields/custom-field-type-option';
 import NiceModal, {useModal} from '@ebay/nice-modal-react';
-import React from 'react';
 import {Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Field, FieldDescription, FieldError, FieldGroup, FieldLabel, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@tryghost/shade/components';
 import {LucideIcon} from '@tryghost/shade/utils';
 import {SettingsModal} from '@tryghost/shade/patterns';
