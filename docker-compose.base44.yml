@@ -135,7 +135,9 @@ services:
       ghost-dev:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "Promise.all([fetch('http://localhost:5174/__admin-dev__/'),fetch('http://localhost:4200/ember-cli-live-reload.js')]).then(([a,e])=>{if(!a.ok)console.log('admin vite failed');if(!e.ok)console.log('ember failed');process.exit(a.ok&&e.ok?0:1)}).catch(e=>{console.log(e.message);process.exit(1)})"]
+      # Probe Ember first: Vite's index transform reads ember-admin/dist/index.html,
+      # which only exists once Ember's first build finishes (probing earlier logs ENOENT).
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4200/ember-cli-live-reload.js').then(e=>{if(!e.ok){console.log('ember failed');process.exit(1)}return fetch('http://localhost:5174/__admin-dev__/')}).then(a=>{if(!a.ok)console.log('admin vite failed');process.exit(a.ok?0:1)}).catch(e=>{console.log(e.message);process.exit(1)})"]
       interval: 15s
       timeout: 10s
       retries: 6
