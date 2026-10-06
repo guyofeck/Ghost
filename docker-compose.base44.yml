@@ -1,0 +1,174 @@
+# Base44 preview dev stack for the Ghost monorepo.
+# Modeled on .devcontainer/: the whole repo is bind-mounted into plain Node
+# containers, dependencies are installed from the lockfile at startup, and the
+# repo's Caddy gateway fronts everything on host port 3000.
+name: ghost-base44
+
+x-node-app: &node-app
+  build:
+    context: ./docker
+    dockerfile_inline: |
+      FROM node:22.23.1-bookworm
+      RUN apt-get update && apt-get install -y --no-install-recommends watchman && rm -rf /var/lib/apt/lists/*
+      RUN corepack enable
+  image: ghost-base44-node:dev
+  working_dir: /workspaces/Ghost
+  volumes:
+    - ./:/workspaces/Ghost
+    - pnpm-store:/pnpm-store
+  environment: &node-env
+    pnpm_config_store_dir: /pnpm-store
+    COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    CI: "true"
+    # Don't let `pnpm install`'s prepare step rewrite the sandbox's git hooksPath.
+    HUSKY: "0"
+    # Tells the Nx docker:up/docker:build targets to skip `docker compose`
+    # (same switch the devcontainer uses) since this stack already runs them.
+    REMOTE_CONTAINERS: "true"
+    NX_DAEMON: "false"
+    NX_TUI: "false"
+    NX_DEFAULT_OUTPUT_STYLE: stream
+
+services:
+  mysql:
+    image: mysql:8.4.10@sha256:8dbcf531a03aade657e181b9cf2f1d1803ce621a1d55610cb44cb531ab7d7db6
+    command: --innodb-buffer-pool-size=256M --innodb-log-buffer-size=64M --innodb-flush-log-at-trx_commit=0 --innodb-flush-method=O_DIRECT --log-error-verbosity=1
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ghost_dev
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysql", "-h", "127.0.0.1", "-uroot", "-proot", "-e", "SELECT 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 90
+      start_period: 10s
+    restart: on-failure
+
+  redis:
+    image: redis:7.4@sha256:a8f08480e1f88f2647fed492d1178c06abb0d0c1fbf02c682a61e2f483fb3954
+    command: ["redis-server", "--loglevel", "warning"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 60
+    restart: on-failure
+
+  mailpit:
+    image: axllent/mailpit@sha256:956d688cbd13dca36c72d8e94c34d6d1cdf4a005aa6aa4ff6edaaac56c34d8df
+    command: ["--quiet"]
+    ports:
+      - "8025:8025"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8025"]
+      interval: 2s
+      retries: 30
+    restart: on-failure
+
+  # One-shot: install the full workspace from the lockfile into the bind mount.
+  install:
+    <<: *node-app
+    command: ["sh", "-ec", "pnpm install --frozen-lockfile --prefer-offline"]
+
+  ghost-dev:
+    <<: *node-app
+    command: ["sh", "-ec", "cd ghost/core && pnpm build:assets && exec pnpm dev"]
+    environment:
+      <<: *node-env
+      NODE_ENV: development
+      url: https://3000-${BASE44_PUBLIC_HOST_SUFFIX}
+      database__client: mysql2
+      database__connection__host: mysql
+      database__connection__user: root
+      database__connection__password: root
+      database__connection__database: ghost_dev
+      server__host: 0.0.0.0
+      server__port: 2368
+      mail__transport: SMTP
+      mail__options__host: mailpit
+      mail__options__port: 1025
+      adapters__cache__Redis__host: redis
+      adapters__cache__Redis__port: 6379
+      portal__url: /ghost/assets/portal/portal.min.js
+      comments__url: /ghost/assets/comments-ui/comments-ui.min.js
+      sodoSearch__url: /ghost/assets/sodo-search/sodo-search.min.js
+      sodoSearch__styles: /ghost/assets/sodo-search/main.css
+      signupForm__url: /ghost/assets/signup-form/signup-form.min.js
+      announcementBar__url: /ghost/assets/announcement-bar/announcement-bar.min.js
+      adminToolbar__url: /ghost/assets/admin-toolbar/admin-toolbar.min.js
+    volumes:
+      - ./:/workspaces/Ghost
+      - pnpm-store:/pnpm-store
+      - ghost-content-data:/workspaces/Ghost/ghost/core/content/data
+      - ghost-content-images:/workspaces/Ghost/ghost/core/content/images
+    depends_on:
+      install:
+        condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:2368/ghost/api/admin/site/',{headers:{'X-Forwarded-Proto':'https'}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 300s
+    restart: on-failure
+
+  # Admin (Vite + Ember watchers + shade/framework builds) and Portal watchers.
+  frontend:
+    <<: *node-app
+    command: ["sh", "-ec", "exec pnpm nx run-many -t dev --projects=@tryghost/admin,@tryghost/portal"]
+    environment:
+      <<: *node-env
+      # Bootstrap fetch goes through the gateway so Ghost sees X-Forwarded-Proto: https.
+      GHOST_URL: http://gateway:80/
+    depends_on:
+      install:
+        condition: service_completed_successfully
+      ghost-dev:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "Promise.all([fetch('http://localhost:5174/__admin-dev__/'),fetch('http://localhost:4200/ember-cli-live-reload.js')]).then(([a,e])=>{if(!a.ok)console.log('admin vite failed');if(!e.ok)console.log('ember failed');process.exit(a.ok&&e.ok?0:1)}).catch(e=>{console.log(e.message);process.exit(1)})"]
+      interval: 15s
+      timeout: 10s
+      retries: 6
+      start_period: 600s
+    restart: on-failure
+
+  gateway:
+    build:
+      context: ./docker/dev-gateway
+    ports:
+      - "3000:80"
+    environment:
+      GHOST_BACKEND: ghost-dev:2368
+      ADMIN_DEV_SERVER: frontend:5174
+      ADMIN_LIVE_RELOAD_SERVER: frontend:4200
+      LEXICAL_DEV_SERVER: frontend:4173
+    volumes:
+      - ./docker/dev-gateway/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./apps:/srv/apps:ro
+    depends_on:
+      ghost-dev:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:80/ghost/api/admin/site/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: on-failure
+
+volumes:
+  pnpm-store:
+  mysql-data:
+  redis-data:
+  ghost-content-data:
+  ghost-content-images:

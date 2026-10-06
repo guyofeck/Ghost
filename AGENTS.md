@@ -400,3 +400,13 @@ pnpm nx reset                  # Reset Nx cache
 ### Test Issues
 - **E2E failures:** Check `e2e/CLAUDE.md` for debugging tips
 - **Docker issues:** `pnpm docker:clean && pnpm docker:build`
+
+## Base44 preview environment
+
+`docker-compose.base44.yml` runs everything in containers (modeled on `.devcontainer/`): a one-shot `install` service runs the full `pnpm install` into the bind-mounted repo, `ghost-dev` runs nodemon in `ghost/core`, `frontend` runs `nx run-many -t dev --projects=@tryghost/admin,@tryghost/portal`, and the repo's Caddy `gateway` serves it all on port 3000.
+
+- Theme submodules (`casper`, `source`) must be checked out; the fork's relative submodule URLs don't resolve, so init them from upstream: `git -c submodule.ghost/core/content/themes/casper.url=https://github.com/TryGhost/Casper.git -c submodule.ghost/core/content/themes/source.url=https://github.com/TryGhost/Source.git submodule update --init`.
+- Ghost's `url` is set to the public preview origin (`https://3000-$BASE44_PUBLIC_HOST_SUFFIX`), so plain-HTTP requests straight to `ghost-dev:2368` get a 301; send `X-Forwarded-Proto: https` or go through `gateway`. Admin's Vite uses `GHOST_URL=http://gateway:80/` for that reason.
+- `REMOTE_CONTAINERS=true` makes the Nx `docker:up`/`docker:build` deps of `@tryghost/admin:dev` no-ops inside the container; `HUSKY=0` stops install from rewriting the sandbox's git `core.hooksPath`.
+- The first frontend start takes about 3 minutes (shade/framework builds + Ember build). Until Ember finishes, Vite logs `ENOENT apps/ember-admin/dist/index.html`. That is expected.
+- Verify: `curl localhost:3000/` (site) and `curl localhost:3000/ghost/` (admin HTML served from `/__admin-dev__/`).
