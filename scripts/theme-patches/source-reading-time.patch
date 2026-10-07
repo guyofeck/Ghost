@@ -1,0 +1,61 @@
+diff --git a/default.hbs b/default.hbs
+index 1a744bc..5637126 100644
+--- a/default.hbs
++++ b/default.hbs
+@@ -16,6 +16,9 @@
+ 
+     {{!-- Theme assets - use the {{asset}} helper to reference styles & scripts, this will take care of caching and cache-busting automatically --}}
+     <link rel="stylesheet" type="text/css" href="{{asset "built/screen.css"}}">
++    {{#is "home"}}
++        <link rel="stylesheet" type="text/css" href="{{asset "css/reading-time.css"}}">
++    {{/is}}
+ 
+     {{!-- Custom background color --}}
+     <style>
+diff --git a/partials/post-card.hbs b/partials/post-card.hbs
+index 35dfabf..aea5b87 100644
+--- a/partials/post-card.hbs
++++ b/partials/post-card.hbs
+@@ -17,6 +17,11 @@
+             </figure>
+         {{/if}}
+         <div class="gh-card-wrapper">
++            {{#is "home"}}
++                <p class="gh-card-reading-time" style="--reading-minutes: {{reading_time seconds="1" minute="1" minutes="%"}}" aria-label="{{reading_time seconds="Estimated reading time: 1 minute" minute="Estimated reading time: 1 minute" minutes="Estimated reading time: % minutes"}}">
++                    {{reading_time seconds=(t "1 min read") minute=(t "1 min read") minutes=(t "% min read")}}
++                </p>
++            {{/is}}
+             {{#if primary_tag}}
+                 <p class="gh-card-tag">{{primary_tag.name}}</p>
+             {{/if}}
+diff --git a/assets/css/reading-time.css b/assets/css/reading-time.css
+new file mode 100644
+index 0000000..ff31309
+--- /dev/null
++++ b/assets/css/reading-time.css
+@@ -0,0 +1,25 @@
++.gh-card-reading-time {
++    display: inline-flex;
++    align-items: center;
++    gap: 10px;
++    margin: 0 0 12px;
++    padding: 6px 10px;
++    background: #080808;
++    color: #c5a059;
++    font-family: var(--font-mono);
++    font-size: 14px;
++    line-height: 1.6;
++}
++
++.gh-card-reading-time::before {
++    content: "";
++    width: clamp(16px, calc(var(--reading-minutes, 1) * 4px), 80px);
++    height: 1px;
++    background: currentColor;
++}
++
++.home-template .gh-card-link:focus-visible {
++    outline: 2px solid #f2f2f2;
++    outline-offset: 4px;
++    box-shadow: 0 0 0 6px #080808;
++}
