@@ -79,6 +79,9 @@ services:
     environment:
       <<: *node-env
       NODE_ENV: development
+      # ActivityPub is not provisioned in this local stack. Use Ghost's existing
+      # read-only host override without changing the database or production config.
+      hostSettings__settingsOverrides__social_web_enabled: "false"
       url: https://3000-${BASE44_PUBLIC_HOST_SUFFIX}
       database__client: mysql2
       database__connection__host: mysql
