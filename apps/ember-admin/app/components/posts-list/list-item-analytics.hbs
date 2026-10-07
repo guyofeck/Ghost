@@ -330,6 +330,8 @@
             {{/if}}
         </div>
 
+        <PostsList::CopyLink @post={{@post}} />
+
         {{!-- Button column --}}
         {{#if @post.hasAnalyticsPage }}
             <a href="#/posts/analytics/{{@post.id}}" class="permalink gh-list-data gh-post-list-button" title="">

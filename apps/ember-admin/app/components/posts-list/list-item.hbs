@@ -257,6 +257,8 @@
         {{/if}}
     </div>
 
+    <PostsList::CopyLink @post={{@post}} />
+
     {{!-- Button column --}}
     {{#if @post.hasAnalyticsPage }}
         {{#if (gh-user-can-admin this.session.user)}}

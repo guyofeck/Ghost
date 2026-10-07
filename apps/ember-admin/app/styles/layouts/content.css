@@ -1088,6 +1088,11 @@
     width: 52px;
 }
 
+.gh-list-data .gh-post-list-copy-link {
+    width: auto;
+    margin-right: 8px;
+}
+
 .gh-post-list-cta.is-hovered {
     border-color: var(--whitegrey-d2);
 }

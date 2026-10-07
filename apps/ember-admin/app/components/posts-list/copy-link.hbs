@@ -1,0 +1,15 @@
+{{#if (and @post.isPublished @post.url)}}
+    <div class="gh-list-data gh-post-list-button">
+        <button
+            type="button"
+            class="gh-post-list-cta gh-post-list-copy-link"
+            title="Copy link"
+            data-ignore-select
+            data-test-button="copy-post-link"
+            {{on "click" this.copyLink}}
+        >
+            {{svg-jar "link"}}
+            <span>Copy link</span>
+        </button>
+    </div>
+{{/if}}
