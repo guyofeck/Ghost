@@ -1,0 +1,14 @@
+diff --git a/partials/post-card.hbs b/partials/post-card.hbs
+index 35dfabf..ae1fdc8 100644
+--- a/partials/post-card.hbs
++++ b/partials/post-card.hbs
+@@ -20,6 +20,9 @@
+             {{#if primary_tag}}
+                 <p class="gh-card-tag">{{primary_tag.name}}</p>
+             {{/if}}
++            {{#is "home"}}
++                <p class="gh-card-reading-time gh-card-meta">{{reading_time minute=(t "1 min read") minutes=(t "% min read")}}</p>
++            {{/is}}
+             <h3 class="gh-card-title is-title">{{title}}</h3>
+             {{#if custom_excerpt}}
+                 <p class="gh-card-excerpt is-body">{{custom_excerpt}}</p>

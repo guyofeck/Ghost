@@ -71,7 +71,7 @@ services:
   # One-shot: install the full workspace from the lockfile into the bind mount.
   install:
     <<: *node-app
-    command: ["sh", "-ec", "pnpm install --frozen-lockfile --prefer-offline"]
+    command: ["sh", "-ec", "pnpm install --frozen-lockfile --prefer-offline && node scripts/apply-theme-patches.js"]
 
   ghost-dev:
     <<: *node-app
