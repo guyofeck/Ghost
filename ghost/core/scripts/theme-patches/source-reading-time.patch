@@ -1,0 +1,49 @@
+diff --git a/home.hbs b/home.hbs
+index 69215ab..f799057 100644
+--- a/home.hbs
++++ b/home.hbs
+@@ -1,6 +1,30 @@
+ {{!< default}}
+ {{!-- The tag above means: insert everything in this file into the body of the default.hbs template --}}
+ 
++<style>
++    .home-template .gh-card-reading-time {
++        display: inline-block;
++        margin-inline-start: 8px;
++        padding: 2px 6px;
++        font-family: var(--font-mono);
++        font-size: 14px;
++        font-weight: 500;
++        line-height: 1.2;
++        white-space: nowrap;
++        color: #C43F1D;
++        background-color: #F7F6F2;
++    }
++
++    .home-template .gh-card-reading-time:first-child {
++        margin-inline-start: 0;
++    }
++
++    .home-template .gh-card-link:focus-visible {
++        outline: 3px solid #C43F1D;
++        outline-offset: 4px;
++    }
++</style>
++
+ {{> "components/header" headerStyle=@custom.header_style}}
+ 
+ {{#match @custom.header_style "!=" "Highlight"}}
+diff --git a/partials/post-card.hbs b/partials/post-card.hbs
+index 35dfabf..8d2bec1 100644
+--- a/partials/post-card.hbs
++++ b/partials/post-card.hbs
+@@ -41,6 +41,9 @@
+                 {{#if @custom.show_publish_date}}
+                     <time class="gh-card-date" datetime="{{date format="YYYY-MM-DD"}}">{{date format="DD MMM YYYY"}}</time>
+                 {{/if}}<!--
++             -->{{#is "home"}}
++                    <span class="gh-card-reading-time">{{reading_time seconds=(t "1 min read") minute=(t "1 min read") minutes=(t "% min read")}}</span>
++                {{/is}}<!--
+          --></footer>
+         </div>
+     </a>
