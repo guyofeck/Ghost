@@ -11,8 +11,10 @@ export default class PostsListItemClicks extends Component {
     @service session;
     @service settings;
     @service postAnalytics;
+    @service notifications;
 
     @tracked isHovered = false;
+    @tracked isCopyingLink = false;
     @tracked tooltipPosition = 'above'; // 'above' or 'below'
 
     @inject config;
@@ -61,6 +63,27 @@ export default class PostsListItemClicks extends Component {
             return 0;
         }
         return this.memberCounts.free + this.memberCounts.paid;
+    }
+
+    @action
+    async copyLink(event) {
+        event.stopPropagation();
+
+        if (!this.post.isPublished || !this.post.url || this.isCopyingLink) {
+            return;
+        }
+
+        this.isCopyingLink = true;
+        try {
+            await navigator.clipboard.writeText(this.post.url);
+            this.notifications.showNotification('Post link copied', {type: 'success'});
+        } catch (error) {
+            this.notifications.showNotification('Could not copy post link. Please try again.', {type: 'error'});
+        } finally {
+            if (!this.isDestroyed && !this.isDestroying) {
+                this.isCopyingLink = false;
+            }
+        }
     }
 
     @action

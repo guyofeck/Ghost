@@ -330,6 +330,14 @@
             {{/if}}
         </div>
 
+        {{#if (and @post.isPublished @post.url)}}
+            <div class="gh-list-data gh-post-list-button" data-ignore-select>
+                <button type="button" class="gh-post-list-cta gh-post-list-copy-link" disabled={{this.isCopyingLink}} data-test-copy-post-link {{on "click" this.copyLink}}>
+                    Copy link
+                </button>
+            </div>
+        {{/if}}
+
         {{!-- Button column --}}
         {{#if @post.hasAnalyticsPage }}
             <a href="#/posts/analytics/{{@post.id}}" class="permalink gh-list-data gh-post-list-button" title="">
