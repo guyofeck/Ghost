@@ -1,0 +1,192 @@
+# Base44 sandbox dev environment for Ghost.
+# Everything runs from the bind-mounted checkout (no prebuilt app images):
+#   install   - one-shot `pnpm install` of the whole workspace into the checkout
+#   ghost-dev - Ghost core backend (nodemon hot reload) on :2368
+#   admin     - Ember admin (ember serve), shade/admin-x-framework/portal watchers,
+#               and the React admin Vite dev server on :5174
+#   gateway   - the repo's Caddy dev gateway, published on host port 3000
+name: ghost-base44
+
+x-app: &app
+  image: ghost-base44-dev:local
+  volumes:
+    - .:/home/ghost
+    - pnpm-store:/root/.local/share/pnpm/store
+  environment: &app-env
+    CI: "true"
+    HUSKY: "0"
+    COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    NX_DAEMON: "false"
+    NX_TUI: "false"
+    NX_NO_CLOUD: "true"
+    BASE44_PREVIEW_MODE:
+
+services:
+  mysql:
+    image: mysql:8.4.10
+    command: --innodb-buffer-pool-size=256M --innodb-flush-log-at-trx_commit=0 --log-error-verbosity=1
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ghost_dev
+    volumes:
+      - mysql-data:/var/lib/mysql
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "mysql", "-h", "127.0.0.1", "-uroot", "-proot", "-e", "SELECT 1"]
+      interval: 2s
+      retries: 90
+      timeout: 5s
+      start_period: 10s
+
+  redis:
+    image: redis:7.4
+    command: ["redis-server", "--loglevel", "warning"]
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 60
+
+  mailpit:
+    image: axllent/mailpit
+    command: ["--quiet"]
+    ports:
+      - "8025:8025"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8025"]
+      interval: 2s
+      retries: 30
+
+  # Runtime image only (node + build tools + watchman); the workspace's
+  # node_modules come from this service's install, inside the checkout.
+  # Not docker/ghost-dev/Dockerfile: its bullseye base can no longer apt-get
+  # (bullseye-security packages 404), and it bakes deps we install here anyway.
+  install:
+    <<: *app
+    build:
+      context: ./docker
+      dockerfile_inline: |
+        FROM node:22.23.1-bookworm-slim
+        RUN apt-get update && apt-get install -y --no-install-recommends \
+              build-essential python3 git curl ca-certificates watchman \
+            && rm -rf /var/lib/apt/lists/*
+        RUN corepack enable
+        WORKDIR /home/ghost
+    working_dir: /home/ghost
+    entrypoint: []
+    command: ["sh", "-ec", "pnpm install --frozen-lockfile"]
+
+  ghost-dev:
+    <<: *app
+    working_dir: /home/ghost/ghost/core
+    command: ["pnpm", "dev"]
+    volumes:
+      - .:/home/ghost
+      - ghost-content-data:/home/ghost/ghost/core/content/data
+      - ghost-content-images:/home/ghost/ghost/core/content/images
+      - ghost-content-media:/home/ghost/ghost/core/content/media
+      - ghost-content-files:/home/ghost/ghost/core/content/files
+      - ghost-content-logs:/home/ghost/ghost/core/content/logs
+    environment:
+      <<: *app-env
+      NODE_ENV: development
+      pnpm_config_verify_deps_before_run: "false"
+      url: https://3000-${BASE44_PUBLIC_HOST_SUFFIX}/
+      database__client: mysql2
+      database__connection__host: mysql
+      database__connection__user: root
+      database__connection__password: root
+      database__connection__database: ghost_dev
+      server__host: 0.0.0.0
+      server__port: 2368
+      mail__transport: SMTP
+      mail__options__host: mailpit
+      mail__options__port: 1025
+      adapters__cache__Redis__host: redis
+      adapters__cache__Redis__port: 6379
+      portal__url: /ghost/assets/portal/portal.min.js
+    depends_on:
+      install:
+        condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:2368/ghost/api/admin/site/',{headers:{'X-Forwarded-Proto':'https'}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 300s
+
+  admin:
+    <<: *app
+    working_dir: /home/ghost
+    entrypoint: []
+    environment:
+      <<: *app-env
+      JOBS: "2"
+      GHOST_URL: http://ghost-dev:2368/
+      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS:
+    command:
+      - sh
+      - -ec
+      - |
+        pnpm nx run ghost:build:assets
+        pnpm nx run-many -t dev -p ghost-admin @tryghost/admin-x-framework @tryghost/shade @tryghost/portal --parallel=5 &
+        echo "Waiting for admin-x-framework and Ember builds..."
+        until [ -d apps/admin-x-framework/dist ] && [ -f apps/ember-admin/dist/index.html ]; do sleep 5; done
+        cd apps/admin
+        exec pnpm exec vite
+    depends_on:
+      install:
+        condition: service_completed_successfully
+      ghost-dev:
+        condition: service_healthy
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -fsS -o /dev/null http://localhost:5174/__admin-dev__/ || { echo 'admin vite down'; exit 1; }; curl -fsS -o /dev/null http://localhost:4200/ || { echo 'ember serve down'; exit 1; }"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 900s
+
+  gateway:
+    build:
+      context: ./docker/dev-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    environment:
+      GHOST_BACKEND: ghost-dev:2368
+      ADMIN_DEV_SERVER: admin:5174
+      ADMIN_LIVE_RELOAD_SERVER: admin:4200
+      LEXICAL_DEV_SERVER: admin:4173
+      ANALYTICS_PROXY_TARGET: ghost-dev:2368
+      ACTIVITYPUB_PROXY_TARGET: ghost-dev:2368
+    volumes:
+      - ./docker/dev-gateway/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./apps:/srv/apps:ro
+    depends_on:
+      ghost-dev:
+        condition: service_healthy
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:80/ghost/api/admin/site/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+volumes:
+  mysql-data:
+  pnpm-store:
+  ghost-content-data:
+  ghost-content-images:
+  ghost-content-media:
+  ghost-content-files:
+  ghost-content-logs:

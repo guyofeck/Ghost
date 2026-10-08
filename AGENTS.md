@@ -400,3 +400,15 @@ pnpm nx reset                  # Reset Nx cache
 ### Test Issues
 - **E2E failures:** Check `e2e/CLAUDE.md` for debugging tips
 - **Docker issues:** `pnpm docker:clean && pnpm docker:build`
+
+## Base44 sandbox environment
+
+`docker-compose.base44.yml` runs the whole dev stack from the bind-mounted checkout (preview on host port 3000):
+
+- `install` (one-shot) runs `pnpm install --frozen-lockfile` for the full workspace into the checkout; all app services mount the repo at `/home/ghost` and share that `node_modules`. It uses an inline bookworm image instead of `docker/ghost-dev/Dockerfile`, whose bullseye base now fails `apt-get install` (bullseye-security packages 404).
+- `ghost-dev` runs `pnpm dev` (nodemon) in `ghost/core` against MySQL/Redis/Mailpit. `url` is `https://3000-$BASE44_PUBLIC_HOST_SUFFIX/`, so Ghost 301-redirects plain-HTTP requests unless they send `X-Forwarded-Proto: https` (the Caddy gateway and the healthcheck do).
+- `admin` builds `ghost:build:assets`, runs the Nx `dev` targets for ember-admin, admin-x-framework, shade and portal, then starts the React admin Vite server (`/__admin-dev__`). First boot takes ~2–3 minutes before `/ghost/` works.
+- `gateway` is the repo's Caddy dev gateway (`docker/dev-gateway`) published as `3000:80`, pointed at the compose services.
+- Theme submodules (`ghost/core/content/themes/{casper,source}`) must be initialised: `git submodule update --init --recursive`.
+- Verify: `curl localhost:3000/` renders the Source theme; `curl localhost:3000/ghost/` returns the Vite admin HTML; first visit to `/ghost/` shows the owner setup flow. Mail is caught by Mailpit on port 8025.
+- No external secrets are needed to boot. Stripe and Mailgun are optional (see `.env.example`).
